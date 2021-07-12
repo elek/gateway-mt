@@ -70,37 +70,52 @@ var forwardForClientIPRegExp = regexp.MustCompile(`for=([^,; ]+)`)
 // formatted IP v4 nor v6.
 func GetClientIP(tipl TrustedIPsList, r *http.Request) string {
 	if tipl.IsTrusted(r.RemoteAddr) {
-		header := r.Header.Get("Forwarded")
-		if header != "" {
-			// Get the first value of the 'for' identifier present in the header because
-			// its the one that contains the client IP.
-			// see: https://datatracker.ietf.org/doc/html/rfc7230
-			matches := forwardForClientIPRegExp.FindStringSubmatch(header)
-			if len(matches) > 1 {
-				return matches[1]
-			}
-		}
-
-		header = r.Header.Get("X-Forwarded-For")
-		if header != "" {
-			// Get the first the value IP because it's the client IP.
-			// Header sysntax: X-Forwarded-For: <client>, <proxy1>, <proxy2>
-			// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For
-			ips := strings.SplitN(header, ",", 2)
-			if len(ips) > 0 {
-				return ips[0]
-			}
-		}
-
-		header = r.Header.Get("X-Real-Ip")
-		if header != "" {
-			// Get the value of the header because its value is just the client IP.
-			// This header is mostly sent by NGINX.
-			// See https://www.nginx.com/resources/wiki/start/topics/examples/forwarded/
-			return header
+		ip, ok := GetIPFromHeaders(r)
+		if ok {
+			return ip
 		}
 	}
 
 	// Ensure to strip the port out if r.RemoteAddr has it.
 	return strings.SplitN(r.RemoteAddr, ":", 2)[0]
+}
+
+// GetIPFromHeaders gets the IP of the client from the first exiting header in
+// this order: 'Forwarded', 'X-Forwarded-For', or 'X-Real-Ip'.
+// It returns the IP and true if the any of the headers exists, otherwise false.
+//
+// NOTE: it doesn't check that the IP value get from wherever source is a well
+// formatted IP v4 nor v6.
+func GetIPFromHeaders(r *http.Request) (string, bool) {
+	header := r.Header.Get("Forwarded")
+	if header != "" {
+		// Get the first value of the 'for' identifier present in the header because
+		// its the one that contains the client IP.
+		// see: https://datatracker.ietf.org/doc/html/rfc7230
+		matches := forwardForClientIPRegExp.FindStringSubmatch(header)
+		if len(matches) > 1 {
+			return matches[1], true
+		}
+	}
+
+	header = r.Header.Get("X-Forwarded-For")
+	if header != "" {
+		// Get the first the value IP because it's the client IP.
+		// Header sysntax: X-Forwarded-For: <client>, <proxy1>, <proxy2>
+		// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For
+		ips := strings.SplitN(header, ",", 2)
+		if len(ips) > 0 {
+			return ips[0], true
+		}
+	}
+
+	header = r.Header.Get("X-Real-Ip")
+	if header != "" {
+		// Get the value of the header because its value is just the client IP.
+		// This header is mostly sent by NGINX.
+		// See https://www.nginx.com/resources/wiki/start/topics/examples/forwarded/
+		return header, true
+	}
+
+	return "", false
 }

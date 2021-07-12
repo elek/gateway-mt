@@ -148,3 +148,121 @@ func TestGetClientIP(t *testing.T) {
 		})
 	}
 }
+
+func TestGetClientIPFromHeaders(t *testing.T) {
+	testCases := []struct {
+		desc string
+		r    *http.Request
+		ip   string
+		ok   bool
+	}{
+		{
+			desc: "'Forwarded' single 'for'",
+			r: &http.Request{
+				RemoteAddr: "10.5.2.23",
+				Header:     map[string][]string{"Forwarded": {"for=172.17.5.10"}},
+			},
+			ip: "172.17.5.10",
+			ok: true,
+		},
+		{
+			desc: "'Forwarded' multiple 'for'",
+			r: &http.Request{
+				RemoteAddr: "192.168.5.2",
+				Header: map[string][]string{
+					"Forwarded": {"for=172.31.254.250,for=172.17.5.10"},
+				},
+			},
+			ip: "172.31.254.250",
+			ok: true,
+		},
+		{
+			desc: "'Forwarded' multiple 'for' with space after comma",
+			r: &http.Request{
+				RemoteAddr: "10.5.2.23",
+				Header: map[string][]string{
+					"Forwarded": {"for=192.168.5.250, for=172.17.5.10"},
+				},
+			},
+			ip: "192.168.5.250",
+			ok: true,
+		},
+		{
+			desc: "'Forwarded' multiple 'for' with other pairs",
+			r: &http.Request{
+				RemoteAddr: "172.20.20.20",
+				Header: map[string][]string{
+					"Forwarded": {
+						"by=storj;for=172.31.254.15,for=172.17.5.10;host=example.test;proto=https",
+						"for=172.28.15.15",
+					},
+				},
+			},
+			ip: "172.31.254.15",
+			ok: true,
+		},
+		{
+			desc: "'X-Forwarded-For' single IP",
+			r: &http.Request{
+				RemoteAddr: "192.168.50.2",
+				Header:     map[string][]string{"X-Forwarded-For": {"172.31.254.80"}},
+			},
+			ip: "172.31.254.80",
+			ok: true,
+		},
+		{
+			desc: "'X-Forwarded-For' multiple IPs",
+			r: &http.Request{
+				RemoteAddr: "192.168.50.2",
+				Header: map[string][]string{
+					"X-Forwarded-For": {"172.28.254.80, 192.168.80.25"},
+				},
+			},
+			ip: "172.28.254.80",
+			ok: true,
+		},
+		{
+			desc: "'X-Real-Ip'",
+			r: &http.Request{
+				RemoteAddr: "192.168.50.2",
+				Header:     map[string][]string{"X-Real-Ip": {"172.31.254.85"}},
+			},
+			ip: "172.31.254.85",
+			ok: true,
+		},
+		{
+			desc: "multiple headers",
+			r: &http.Request{
+				RemoteAddr: "10.5.2.23",
+				Header: map[string][]string{
+					"X-Forwarded-For": {"172.28.254.80, 192.168.80.25"},
+					"Forwarded":       {"for=192.168.5.250, for=172.17.5.10"},
+					"X-Real-Ip":       {"172.31.254.85"},
+				},
+			},
+			ip: "192.168.5.250",
+			ok: true,
+		},
+		{
+			desc: "no headers",
+			r: &http.Request{
+				RemoteAddr: "192.168.50.60",
+			},
+			ok: false,
+		},
+	}
+
+	for _, tC := range testCases {
+		tC := tC
+		t.Run(tC.desc, func(t *testing.T) {
+			ip, ok := GetIPFromHeaders(tC.r)
+			if !tC.ok {
+				assert.Equal(t, tC.ok, ok, "OK")
+				return
+			}
+
+			assert.Equal(t, tC.ip, ip)
+			assert.Equal(t, tC.ok, ok)
+		})
+	}
+}

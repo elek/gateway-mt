@@ -23,8 +23,9 @@ type Resources struct {
 	endpoint  *url.URL
 	authToken string
 
-	handler http.Handler
-	id      *Arg
+	handler              http.Handler
+	id                   *Arg
+	getAccessRateLimiter *ipRateLimiter
 
 	log *zap.Logger
 
@@ -33,6 +34,7 @@ type Resources struct {
 }
 
 // New constructs Resources for some database.
+// TODO: continue here passing the rate limiter configuration.
 func New(log *zap.Logger, db *auth.Database, endpoint *url.URL, authToken string) *Resources {
 	res := &Resources{
 		db:        db,
@@ -209,6 +211,7 @@ func (res *Resources) getAccess(w http.ResponseWriter, req *http.Request) {
 	accessGrant, public, secretKey, err := res.db.Get(req.Context(), key)
 	if err != nil {
 		if auth.NotFound.Has(err) {
+			// TODO: rate limit this client
 			res.writeError(w, "getAccess", err.Error(), http.StatusUnauthorized)
 			return
 		}
