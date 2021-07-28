@@ -44,7 +44,13 @@ func TestResources_URLs(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(method, path, nil)
 		req.Header.Set("Authorization", "Bearer authToken")
-		New(zaptest.NewLogger(t), nil, endpoint, "authToken").ServeHTTP(rec, req)
+		res, err := New(zaptest.NewLogger(t), nil, endpoint, "authToken", FailureRateLimiterConfig{
+			MaxReqsSecond: 1,
+			Burst:         1,
+			NumLimits:     10,
+		})
+		require.NoError(t, err)
+		res.ServeHTTP(rec, req)
 		return rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed
 	}
 
@@ -101,7 +107,11 @@ func TestResources_CRUD(t *testing.T) {
 
 	t.Run("Availability after startup", func(t *testing.T) {
 		allowed := map[storj.NodeID]struct{}{minimalAccessSatelliteID: {}}
-		res := New(zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint, "authToken")
+		res, err := New(
+			zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint,
+			"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+		)
+		require.NoError(t, err)
 
 		const path = "/v1/health/startup"
 
@@ -118,7 +128,11 @@ func TestResources_CRUD(t *testing.T) {
 
 	t.Run("CRUD", func(t *testing.T) {
 		allowed := map[storj.NodeID]struct{}{minimalAccessSatelliteID: {}}
-		res := New(zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint, "authToken")
+		res, err := New(
+			zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint,
+			"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+		)
+		require.NoError(t, err)
 
 		// create an access
 		createRequest := fmt.Sprintf(`{"access_grant": %q}`, minimalAccess)
@@ -147,7 +161,11 @@ func TestResources_CRUD(t *testing.T) {
 		var unknownSatelliteID storj.NodeID
 		unknownSatelliteID[4] = 7
 		allowed := map[storj.NodeID]struct{}{unknownSatelliteID: {}}
-		res := New(zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint, "authToken")
+		res, err := New(
+			zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint,
+			"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+		)
+		require.NoError(t, err)
 
 		// create an access
 		createRequest := fmt.Sprintf(`{"access_grant": %q}`, minimalAccess)
@@ -155,16 +173,24 @@ func TestResources_CRUD(t *testing.T) {
 		require.False(t, ok)
 
 		allowed = map[storj.NodeID]struct{}{unknownSatelliteID: {}, minimalAccessSatelliteID: {}}
-		res = New(zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint, "authToken")
+		res, err = New(
+			zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint,
+			"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+		)
+		require.NoError(t, err)
 
 		// create an access
 		createRequest = fmt.Sprintf(`{"access_grant": %q}`, minimalAccess)
 		_, ok = exec(res, "POST", "/v1/access", createRequest)
 		require.True(t, ok)
 
-		allowed, _, err := auth.LoadSatelliteIDs(context.Background(), []string{"12EayRS2V1kEsWESU9QMRseFhdxYxKicsiFmxrsLZHeLUtdps3S@us-central-1.tardigrade.io:7777"})
+		allowed, _, err = auth.LoadSatelliteIDs(context.Background(), []string{"12EayRS2V1kEsWESU9QMRseFhdxYxKicsiFmxrsLZHeLUtdps3S@us-central-1.tardigrade.io:7777"})
 		require.NoError(t, err)
-		res = New(zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint, "authToken")
+		res, err = New(
+			zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint,
+			"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+		)
+		require.NoError(t, err)
 		mac, err := macaroon.NewAPIKey(nil)
 		require.NoError(t, err)
 		access := grant.Access{
@@ -184,7 +210,11 @@ func TestResources_CRUD(t *testing.T) {
 
 	t.Run("Invalidate", func(t *testing.T) {
 		allowed := map[storj.NodeID]struct{}{minimalAccessSatelliteID: {}}
-		res := New(zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint, "authToken")
+		res, err := New(
+			zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint,
+			"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+		)
+		require.NoError(t, err)
 
 		// create an access
 		createRequest := fmt.Sprintf(`{"access_grant": %q}`, minimalAccess)
@@ -210,7 +240,11 @@ func TestResources_CRUD(t *testing.T) {
 
 	t.Run("Public", func(t *testing.T) {
 		allowed := map[storj.NodeID]struct{}{minimalAccessSatelliteID: {}}
-		res := New(zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint, "authToken")
+		res, err := New(
+			zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint,
+			"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+		)
+		require.NoError(t, err)
 
 		// create a public access
 		createRequest := fmt.Sprintf(`{"access_grant": %q, "public": true}`, minimalAccess)
@@ -232,7 +266,11 @@ func TestResources_Authorization(t *testing.T) {
 	require.NoError(t, err)
 
 	allowed := map[storj.NodeID]struct{}{minimalAccessSatelliteID: {}}
-	res := New(zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint, "authToken")
+	res, err := New(
+		zaptest.NewLogger(t), auth.NewDatabase(memauth.New(), allowed), endpoint,
+		"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+	)
+	require.NoError(t, err)
 
 	// create an access grant and base url
 	createRequest := fmt.Sprintf(`{"access_grant": %q}`, minimalAccess)
@@ -266,7 +304,13 @@ func TestResources_CORS(t *testing.T) {
 		req := httptest.NewRequest(method, path, nil)
 		req.Header.Set("Authorization", "Bearer authToken")
 		req.Header.Add("Origin", "http://example.com")
-		New(zaptest.NewLogger(t), nil, endpoint, "authToken").ServeHTTP(rec, req)
+		res, err := New(
+			zaptest.NewLogger(t), nil, endpoint,
+			"authToken", FailureRateLimiterConfig{MaxReqsSecond: 1, Burst: 1, NumLimits: 10},
+		)
+		require.NoError(t, err)
+
+		res.ServeHTTP(rec, req)
 
 		var isValidCORSHeaders bool
 		result := rec.Result()
@@ -278,7 +322,6 @@ func TestResources_CORS(t *testing.T) {
 		}
 		respHeaders = result.Header.Get("Access-Control-Allow-Methods")
 		if respHeaders == "POST, OPTIONS" {
-
 			isValidCORSHeaders = true
 		}
 		respHeaders = result.Header.Get("Access-Control-Allow-Headers")

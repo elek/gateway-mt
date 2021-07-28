@@ -25,7 +25,7 @@ type Resources struct {
 
 	handler              http.Handler
 	id                   *Arg
-	getAccessRateLimiter *ipRateLimiter
+	getAccessRateLimiter *failureRateLimiter
 
 	log *zap.Logger
 
@@ -34,8 +34,9 @@ type Resources struct {
 }
 
 // New constructs Resources for some database.
-// TODO: continue here passing the rate limiter configuration.
-func New(log *zap.Logger, db *auth.Database, endpoint *url.URL, authToken string) *Resources {
+//
+// It returns an error if getAccessRLConfig has invalid settings.
+func New(log *zap.Logger, db *auth.Database, endpoint *url.URL, authToken string, getAccessRLConfig FailureRateLimiterConfig) (*Resources, error) {
 	res := &Resources{
 		db:        db,
 		endpoint:  endpoint,
@@ -43,6 +44,18 @@ func New(log *zap.Logger, db *auth.Database, endpoint *url.URL, authToken string
 
 		id:  new(Arg),
 		log: log,
+	}
+
+	{ // Configure GET Access rate limiter
+		var (
+			rl  *failureRateLimiter
+			err error
+		)
+		if rl, err = newFailureRateLimiter(getAccessRLConfig); err != nil {
+			return nil, err
+		}
+
+		res.getAccessRateLimiter = rl
 	}
 
 	res.handler = Dir{
@@ -79,7 +92,7 @@ func New(log *zap.Logger, db *auth.Database, endpoint *url.URL, authToken string
 		},
 	}
 
-	return res
+	return res, nil
 }
 
 // ServeHTTP makes Resources an http.Handler.
@@ -212,6 +225,7 @@ func (res *Resources) getAccess(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		if auth.NotFound.Has(err) {
 			// TODO: rate limit this client
+			// res.getAccessRateLimiter.
 			res.writeError(w, "getAccess", err.Error(), http.StatusUnauthorized)
 			return
 		}

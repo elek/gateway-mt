@@ -51,10 +51,11 @@ var (
 
 // Config is the config.
 type Config struct {
-	Endpoint          string        `help:"Gateway endpoint URL to return to clients" default:""`
-	AuthToken         string        `help:"auth security token to validate requests" releaseDefault:"" devDefault:""`
-	AllowedSatellites []string      `help:"list of satellite NodeURLs allowed for incoming access grants" default:"https://www.storj.io/dcs-satellites"`
-	CacheExpiration   time.Duration `help:"length of time satellite addresses are cached for" default:"10m"`
+	Endpoint             string        `help:"Gateway endpoint URL to return to clients" default:""`
+	AuthToken            string        `help:"auth security token to validate requests" releaseDefault:"" devDefault:""`
+	AllowedSatellites    []string      `help:"list of satellite NodeURLs allowed for incoming access grants" default:"https://www.storj.io/dcs-satellites"`
+	CacheExpiration      time.Duration `help:"length of time satellite addresses are cached for" default:"10m"`
+	GetAccessRateLimiter httpauth.FailureRateLimiterConfig
 
 	KVBackend string `help:"key/value store backend url" default:""`
 	Migration bool   `help:"create or update the database schema, and then continue service startup" default:"false"`
@@ -143,7 +144,10 @@ func cmdRun(cmd *cobra.Command, args []string) (err error) {
 	defer func() { err = errs.Combine(err, kv.Close()) }()
 
 	db := auth.NewDatabase(kv, allowedSats)
-	res := httpauth.New(log.Named("resources"), db, endpoint, config.AuthToken)
+	res, err := httpauth.New(log.Named("resources"), db, endpoint, config.AuthToken, config.GetAccessRateLimiter)
+	if err != nil {
+		return err
+	}
 
 	tlsInfo := &TLSInfo{
 		LetsEncrypt: config.LetsEncrypt,
