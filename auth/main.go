@@ -70,6 +70,10 @@ func Run(ctx context.Context, config Config, confDir string, log *zap.Logger) er
 		return errs.New("allowed satellites parameter '--allowed-satellites' resolved to zero satellites")
 	}
 
+	for satelliteId := range allowedSats {
+		log.Debug("allowed satellite: " + satelliteId.String())
+	}
+
 	if config.Endpoint == "" {
 		return errs.New("endpoint parameter '--endpoint' is required")
 	}

@@ -13,7 +13,7 @@ services:
       - POSTGRES_HOST_AUTH_METHOD=trust
       - POSTGRES_DB=dcstorj
   storjsim:
-    image: golang:1.16.0
+    image: golang:1.17
     entrypoint: /scripts/start-storj-sim.sh
     volumes:
       - localgopath:/go/storjpath
@@ -29,7 +29,7 @@ services:
       - postgres
       - redis
   authservice:
-    image: golang:1.16.0
+    image: golang:1.17
     entrypoint: /scripts/start-auth-service.sh
     volumes:
       - localgopath:/go/storjpath
@@ -38,12 +38,13 @@ services:
       - storjsimconfig:/config
     ports:
       - "8000:8000"
+      - "8443:8443"
     depends_on:
       - storjsim
     env_file:
       - service.env
   gateway-mt:
-    image: golang:1.16.0
+    image: golang:1.17
     volumes:
       - localgopath:/go/storjpath
       - ${GATEWAY_SRC_DIR}:/code
@@ -59,6 +60,18 @@ services:
       - storjsim
       - authservice
       - tracing
+  linksharing:
+    image: golang:1.17
+    entrypoint: /scripts/start-linksharing.sh
+    volumes:
+      - localgopath:/go/storjpath
+      - ${GATEWAY_SRC_DIR}:/code
+      - ./start-linksharing.sh:/scripts/start-linksharing.sh
+    ports:
+      - "8001:8001"
+    depends_on:
+      - authservice
+      - storjsim
   tracing:
     image: jaegertracing/all-in-one:1.21
     ports:
