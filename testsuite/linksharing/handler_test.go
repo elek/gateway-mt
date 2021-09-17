@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path"
+	"storj.io/gateway-mt/testsuite/linksharing"
 	"strings"
 	"testing"
 
@@ -127,13 +128,14 @@ func testHandlerRequests(t *testing.T, ctx *testcontext.Context, planet *testpla
 	defer validAuthServer.Close()
 
 	testCases := []struct {
-		name       string
-		method     string
-		path       string
-		status     int
-		header     http.Header
-		body       string
-		authserver string
+		name            string
+		method          string
+		path            string
+		status          int
+		header          http.Header
+		body            string
+		authserver      string
+		expectedRpcCall int64
 	}{
 		{
 			name:   "invalid method",
@@ -195,44 +197,50 @@ func testHandlerRequests(t *testing.T, ctx *testcontext.Context, planet *testpla
 			body:   "Object not found",
 		},
 		{
-			name:   "GET success",
-			method: "GET",
-			path:   path.Join("s", serializedAccess, "testbucket", "test/foo"),
-			status: http.StatusOK,
-			body:   "foo",
+			name:            "GET success",
+			method:          "GET",
+			path:            path.Join("s", serializedAccess, "testbucket", "test/foo"),
+			status:          http.StatusOK,
+			body:            "foo",
+			expectedRpcCall: 2,
 		},
 		{
-			name:   "GET bucket listing success",
-			method: "GET",
-			path:   path.Join("s", serializedAccess, "testbucket") + "/",
-			status: http.StatusOK,
-			body:   "test/",
+			name:            "GET bucket listing success",
+			method:          "GET",
+			path:            path.Join("s", serializedAccess, "testbucket") + "/",
+			status:          http.StatusOK,
+			body:            "test/",
+			expectedRpcCall: 2,
 		},
 		{
-			name:   "GET prefix listing success",
-			method: "GET",
-			path:   path.Join("s", serializedAccess, "testbucket", "test") + "/",
-			status: http.StatusOK,
-			body:   "foo",
+			name:            "GET prefix listing success",
+			method:          "GET",
+			path:            path.Join("s", serializedAccess, "testbucket", "test") + "/",
+			status:          http.StatusOK,
+			body:            "foo",
+			expectedRpcCall: 3,
 		},
 		{
-			name:   "GET prefix listing empty",
-			method: "GET",
-			path:   path.Join("s", serializedAccess, "testbucket", "test-empty") + "/",
-			status: http.StatusNotFound,
+			name:            "GET prefix listing empty",
+			method:          "GET",
+			path:            path.Join("s", serializedAccess, "testbucket", "test-empty") + "/",
+			status:          http.StatusNotFound,
+			expectedRpcCall: 3,
 		},
 		{
-			name:   "GET prefix redirect",
-			method: "GET",
-			path:   path.Join("s", serializedAccess, "testbucket", "test"),
-			status: http.StatusSeeOther,
+			name:            "GET prefix redirect",
+			method:          "GET",
+			path:            path.Join("s", serializedAccess, "testbucket", "test"),
+			status:          http.StatusSeeOther,
+			expectedRpcCall: 3,
 		},
 		{
-			name:   "HEAD missing access",
-			method: "HEAD",
-			path:   "s/",
-			status: http.StatusBadRequest,
-			body:   "Malformed request.",
+			name:            "HEAD missing access",
+			method:          "HEAD",
+			path:            "s/",
+			status:          http.StatusBadRequest,
+			body:            "Malformed request.",
+			expectedRpcCall: 0,
 		},
 		{
 			name:       "HEAD misconfigured auth server",
@@ -253,7 +261,7 @@ func testHandlerRequests(t *testing.T, ctx *testcontext.Context, planet *testpla
 		{
 			name:       "HEAD private access key",
 			method:     "GET",
-			path:       path.Join("s", "PRIVATEACCESS", "testbucket", "test/foo"),
+			path:       path.Join("s", "gPRIVATEACCESS", "testbucket", "test/foo"),
 			status:     http.StatusForbidden,
 			body:       "Access denied",
 			authserver: validAuthServer.URL,
@@ -281,11 +289,12 @@ func testHandlerRequests(t *testing.T, ctx *testcontext.Context, planet *testpla
 			body:   "Object not found",
 		},
 		{
-			name:   "HEAD success",
-			method: "HEAD",
-			path:   path.Join("s", serializedAccess, "testbucket", "test/foo"),
-			status: http.StatusOK,
-			body:   "",
+			name:            "HEAD success",
+			method:          "HEAD",
+			path:            path.Join("s", serializedAccess, "testbucket", "test/foo"),
+			status:          http.StatusOK,
+			body:            "",
+			expectedRpcCall: 2,
 		},
 	}
 
@@ -294,6 +303,8 @@ func testHandlerRequests(t *testing.T, ctx *testcontext.Context, planet *testpla
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
+			//rec := linksharing.NewFuncCallCounterPattern("^storj.io/uplink..*\\.[A-Z][A-Za-z]+$")
+			rec := linksharing.NewFuncCallCounter(linksharing.FullNameEqual("storj.io/common/rpc/rpcpool.(*poolConn).Invoke"))
 			handler, err := sharing.NewHandler(zaptest.NewLogger(t), mapper, sharing.Config{
 				URLBases:  []string{"http://localhost"},
 				Templates: "./../../pkg/linksharing/web/",
@@ -303,7 +314,6 @@ func testHandlerRequests(t *testing.T, ctx *testcontext.Context, planet *testpla
 				},
 			})
 			require.NoError(t, err)
-
 			url := "http://localhost/" + testCase.path
 			w := httptest.NewRecorder()
 			r, err := http.NewRequestWithContext(ctx, testCase.method, url, nil)
@@ -315,6 +325,9 @@ func testHandlerRequests(t *testing.T, ctx *testcontext.Context, planet *testpla
 				assert.Equal(t, v, w.Header()[h], "%q header does not match", h)
 			}
 			assert.Contains(t, w.Body.String(), testCase.body, "body does not match")
+			if testCase.expectedRpcCall != 0 {
+				assert.NoError(t, rec.Check(testCase.expectedRpcCall))
+			}
 		})
 	}
 }

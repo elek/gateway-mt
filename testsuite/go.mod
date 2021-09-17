@@ -9,6 +9,7 @@ require (
 	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce
 	github.com/minio/minio v0.0.0-00010101000000-000000000000
 	github.com/minio/minio-go/v7 v7.0.6
+	github.com/spacemonkeygo/monkit/v3 v3.0.15 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/zeebo/errs v1.2.2
 	go.uber.org/zap v1.16.0
